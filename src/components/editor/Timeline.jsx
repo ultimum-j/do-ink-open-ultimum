@@ -1,9 +1,10 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, Copy, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Copy, Trash2, Scissors, ClipboardPaste } from 'lucide-react';
 
 export default function Timeline({ project, currentFrame, onFrameChange, onUpdate }) {
   const frameCount = project?.data?.frames?.length || 1;
+  const [copiedFrame, setCopiedFrame] = React.useState(null);
 
   const handleAddFrame = () => {
     const frames = [...(project.data?.frames || [{ elements: [] }])];
@@ -28,6 +29,19 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
     if (currentFrame >= frames.length) {
       onFrameChange(frames.length - 1);
     }
+  };
+
+  const handleCopyFrame = () => {
+    const frames = project.data?.frames || [{ elements: [] }];
+    setCopiedFrame(JSON.parse(JSON.stringify(frames[currentFrame] || { elements: [] })));
+  };
+
+  const handlePasteFrame = () => {
+    if (!copiedFrame) return;
+    const frames = [...(project.data?.frames || [{ elements: [] }])];
+    frames.splice(currentFrame + 1, 0, JSON.parse(JSON.stringify(copiedFrame)));
+    onUpdate({ ...project.data, frames });
+    onFrameChange(currentFrame + 1);
   };
 
   return (
@@ -126,10 +140,21 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
           <Button
             variant="ghost"
             size="icon"
+            onClick={handleCopyFrame}
             className="text-blue-600"
-            title="More Options"
+            title="Copy Frame"
           >
-            <MoreHorizontal className="w-5 h-5" />
+            <Scissors className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handlePasteFrame}
+            className={copiedFrame ? 'text-blue-600' : 'text-gray-300'}
+            disabled={!copiedFrame}
+            title="Paste Frame After Current"
+          >
+            <ClipboardPaste className="w-5 h-5" />
           </Button>
         </div>
       </div>

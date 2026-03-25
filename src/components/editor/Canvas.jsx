@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import PaintBucketPanel from './PaintBucketPanel';
 
-export default function Canvas({ project, currentFrame, selectedTool, selectedColor, toolProperties, onUpdate, selectedElements: externalSelectedElements, onSelectedElementsChange, zoom = 1, onZoomChange }) {
+export default function Canvas({ project, currentFrame, selectedTool, selectedColor, toolProperties, onUpdate, selectedElements: externalSelectedElements, onSelectedElementsChange, zoom = 1, onZoomChange, ghostFramesBefore = 0, ghostFramesAfter = 0 }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [elements, setElements] = useState([]);
@@ -79,6 +79,63 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, width, height);
+
+    // --- Onion Skinning: Draw ghost frames (previous and next) at reduced opacity ---
+    const frames = project?.data?.frames || [];
+    const ghostIndices = [];
+
+    // Previous ghost frames (shown with blue-ish tint)
+    for (let i = 1; i <= ghostFramesBefore; i++) {
+      const idx = currentFrame - i;
+      if (idx >= 0) ghostIndices.push({ frameIdx: idx, opacity: 0.15 / i, color: 'rgba(100, 140, 255, OPACITY)' });
+    }
+    // Next ghost frames (shown with green-ish tint)
+    for (let i = 1; i <= ghostFramesAfter; i++) {
+      const idx = currentFrame + i;
+      if (idx < frames.length) ghostIndices.push({ frameIdx: idx, opacity: 0.15 / i, color: 'rgba(100, 220, 140, OPACITY)' });
+    }
+
+    ghostIndices.forEach(({ frameIdx, opacity }) => {
+      const ghostElements = frames[frameIdx]?.elements || [];
+      if (ghostElements.length === 0) return;
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ghostElements.forEach((element) => {
+        if (element.type === 'path' && element.segments) {
+          ctx.strokeStyle = element.color || '#888';
+          ctx.lineWidth = element.width || 3;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+          ctx.beginPath();
+          element.segments.forEach((seg, si) => {
+            if (si === 0) ctx.moveTo(seg.start.x, seg.start.y);
+            if (seg.type === 'line') ctx.lineTo(seg.end.x, seg.end.y);
+            else if (seg.type === 'curve') {
+              ctx.bezierCurveTo(seg.control1.x, seg.control1.y, seg.control2.x, seg.control2.y, seg.end.x, seg.end.y);
+            }
+          });
+          if (element.closed) ctx.closePath();
+          if (element.filled) ctx.fill();
+          ctx.stroke();
+        } else if (element.type === 'shape') {
+          ctx.strokeStyle = element.strokeColor || element.color || '#888';
+          ctx.lineWidth = element.strokeWidth || 3;
+          if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+          ctx.beginPath();
+          switch (element.shape) {
+            case 'circle': ctx.arc(element.x, element.y, element.radius, 0, Math.PI * 2); break;
+            case 'rectangle': ctx.rect(element.x, element.y, element.width, element.height); break;
+            case 'ellipse': ctx.ellipse(element.x + element.width / 2, element.y + element.height / 2, element.width / 2, element.height / 2, 0, 0, Math.PI * 2); break;
+            default: break;
+          }
+          if (element.filled) ctx.fill();
+          ctx.stroke();
+        }
+      });
+      ctx.restore();
+    });
+    // --- End Onion Skinning ---
 
     // Draw live pencil preview — smooth Catmull-Rom curve
     if (pencilPoints.length > 1) {
@@ -288,7 +345,7 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
       );
       ctx.setLineDash([]);
     }
-  }, [elements, selectedElement, selectedElements, selectedTool, selectionBox, width, height, pencilPoints, nearStartPoint, selectedColor]);
+  }, [elements, selectedElement, selectedElements, selectedTool, selectionBox, width, height, pencilPoints, nearStartPoint, selectedColor, ghostFramesBefore, ghostFramesAfter, currentFrame, project?.data?.frames]);
 
   // Helper functions for geometric shapes
   const drawStar = (ctx, cx, cy, points, outerRadius, innerRadius) => {

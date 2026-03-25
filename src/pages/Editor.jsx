@@ -14,6 +14,7 @@ import SelectionToolsPanel from '../components/editor/SelectionToolsPanel';
 import FillPropertiesPanel from '../components/editor/FillPropertiesPanel';
 import StrokePropertiesPanel from '../components/editor/StrokePropertiesPanel';
 import ColorPropertiesPanel from '../components/editor/ColorPropertiesPanel';
+import SettingsPanel from '../components/editor/SettingsPanel';
 
 export default function Editor() {
   const navigate = useNavigate();
@@ -58,7 +59,13 @@ export default function Editor() {
     flowerOuterCurve: 50,
   });
   const [showSelectionPanel, setShowSelectionPanel] = useState(true);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [ghostFramesBefore, setGhostFramesBefore] = useState(2);
+  const [ghostFramesAfter, setGhostFramesAfter] = useState(0);
+  const [fps, setFps] = useState(16);
+  const [aspectRatio, setAspectRatio] = useState('free');
+  const [previewBackgroundColor, setPreviewBackgroundColor] = useState('transparent');
   const projectDataRef = useRef(null);
 
   // Undo/Redo history stack
@@ -181,6 +188,20 @@ export default function Editor() {
   const handlePlay = () => {
     setIsPlaying(!isPlaying);
   };
+
+  // Animation playback loop — advance frames at configured FPS
+  useEffect(() => {
+    if (!isPlaying || !project?.data?.frames) return;
+    const frameCount = project.data.frames.length;
+    if (frameCount <= 1) {
+      setIsPlaying(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      setCurrentFrame(prev => (prev + 1) % frameCount);
+    }, 1000 / fps);
+    return () => clearInterval(interval);
+  }, [isPlaying, fps, project?.data?.frames?.length]);
 
   const getElements = () => {
     return project?.data?.frames?.[currentFrame]?.elements || [];
@@ -492,6 +513,8 @@ export default function Editor() {
          onRedo={handleRedo}
          canUndo={historyIndexRef.current > 0}
          canRedo={historyIndexRef.current < historyRef.current.length - 1}
+         onSettingsClick={() => setShowSettingsPanel(!showSettingsPanel)}
+         fps={fps}
        />
 
       <div className="flex-1 flex relative">
@@ -507,13 +530,33 @@ export default function Editor() {
              strokeProperties={strokeProperties}
              onUpdate={(data) => {
                projectDataRef.current = data;
+               pushHistory(data);
                updateProjectMutation.mutate({ id: project.id, data });
              }}
              selectedElements={selectedElements}
              onSelectedElementsChange={setSelectedElements}
              zoom={zoom}
              onZoomChange={setZoom}
+             ghostFramesBefore={ghostFramesBefore}
+             ghostFramesAfter={ghostFramesAfter}
            />
+
+          {/* Settings Panel */}
+          {showSettingsPanel && (
+            <SettingsPanel
+              ghostFramesBefore={ghostFramesBefore}
+              ghostFramesAfter={ghostFramesAfter}
+              fps={fps}
+              aspectRatio={aspectRatio}
+              backgroundColor={previewBackgroundColor}
+              onGhostFramesBeforeChange={setGhostFramesBefore}
+              onGhostFramesAfterChange={setGhostFramesAfter}
+              onFpsChange={setFps}
+              onAspectRatioChange={setAspectRatio}
+              onBackgroundColorChange={setPreviewBackgroundColor}
+              onClose={() => setShowSettingsPanel(false)}
+            />
+          )}
           
           {['brush', 'eraser', 'polygon'].includes(selectedTool) && showToolPanel && !showColorPanel && !showSelectionPanel && (
             <ToolPropertiesPanel
