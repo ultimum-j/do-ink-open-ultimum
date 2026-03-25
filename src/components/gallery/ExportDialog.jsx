@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, ChevronLeft, Download } from 'lucide-react';
+import { X, ChevronLeft, Download, Loader2 } from 'lucide-react';
 
 export default function ExportDialog({ project, onClose }) {
   const [step, setStep] = useState('format'); // 'format', 'size', 'export'
@@ -59,9 +59,110 @@ export default function ExportDialog({ project, onClose }) {
     setStep('export');
   };
 
-  const handleExport = (destination) => {
-    // Handle export logic here
-    console.log('Exporting:', { format: exportFormat, size: exportSize, imageFormat, destination });
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState('');
+
+  /** Render a single frame's elements onto an offscreen canvas at the given size */
+  const renderFrameToCanvas = useCallback((frameElements, targetWidth, targetHeight) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+
+    // The internal canvas is 4000x4000 — scale to target size
+    const sourceSize = 4000;
+    const scale = Math.min(targetWidth / sourceSize, targetHeight / sourceSize);
+    ctx.scale(scale, scale);
+
+    // Transparent background (PNG) or white (JPEG)
+    if (imageFormat === 'jpeg') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sourceSize, sourceSize);
+    }
+
+    (frameElements || []).forEach((element) => {
+      if (element.type === 'path' && element.segments) {
+        ctx.strokeStyle = element.color || '#000';
+        ctx.lineWidth = element.width || 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+        ctx.beginPath();
+        element.segments.forEach((seg, si) => {
+          if (si === 0) ctx.moveTo(seg.start.x, seg.start.y);
+          if (seg.type === 'line') ctx.lineTo(seg.end.x, seg.end.y);
+          else if (seg.type === 'curve') {
+            ctx.bezierCurveTo(seg.control1.x, seg.control1.y, seg.control2.x, seg.control2.y, seg.end.x, seg.end.y);
+          }
+        });
+        if (element.closed) ctx.closePath();
+        if (element.filled) ctx.fill();
+        ctx.stroke();
+      } else if (element.type === 'shape') {
+        ctx.strokeStyle = element.strokeColor || element.color || '#000';
+        ctx.lineWidth = element.strokeWidth || 3;
+        if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+        ctx.beginPath();
+        switch (element.shape) {
+          case 'circle': ctx.arc(element.x, element.y, element.radius, 0, Math.PI * 2); break;
+          case 'rectangle': ctx.rect(element.x, element.y, element.width, element.height); break;
+          case 'ellipse': ctx.ellipse(element.x + element.width / 2, element.y + element.height / 2, element.width / 2, element.height / 2, 0, 0, Math.PI * 2); break;
+          default: break;
+        }
+        if (element.filled) ctx.fill();
+        ctx.stroke();
+      }
+    });
+
+    return canvas;
+  }, [imageFormat]);
+
+  /** Trigger a file download from a canvas */
+  const downloadCanvas = useCallback((canvas, filename) => {
+    const mimeType = imageFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const quality = imageFormat === 'jpeg' ? 0.92 : undefined;
+    const dataUrl = canvas.toDataURL(mimeType, quality);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [imageFormat]);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    const [w, h] = exportSize.split('x').map(Number);
+    const frames = project.data?.frames || [];
+    const ext = imageFormat === 'jpeg' ? 'jpg' : 'png';
+    const safeName = (project.name || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    try {
+      if (exportFormat === 'image') {
+        // Export first frame (or current single frame) as a single image
+        setExportProgress('Rendering image...');
+        const firstFrame = frames[0]?.elements || [];
+        const canvas = renderFrameToCanvas(firstFrame, w, h);
+        downloadCanvas(canvas, `${safeName}.${ext}`);
+      } else if (exportFormat === 'frames') {
+        // Export all frames as individual images
+        for (let i = 0; i < frames.length; i++) {
+          setExportProgress(`Rendering frame ${i + 1} of ${frames.length}...`);
+          const canvas = renderFrameToCanvas(frames[i]?.elements || [], w, h);
+          downloadCanvas(canvas, `${safeName}_frame${String(i + 1).padStart(3, '0')}.${ext}`);
+          // Small delay so browser doesn't block rapid downloads
+          await new Promise(r => setTimeout(r, 150));
+        }
+      } else if (exportFormat === 'video') {
+        setExportProgress('Video export coming soon...');
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
+
+    setIsExporting(false);
+    setExportProgress('');
     onClose();
   };
 
@@ -207,23 +308,20 @@ export default function ExportDialog({ project, onClose }) {
                 Ready to export {exportFormat === 'video' ? 'video' : `${imageFormat.toUpperCase()} image`} at {exportSize}
               </p>
 
-              <div className="grid grid-cols-2 gap-3">
+              {isExporting ? (
+                <div className="flex flex-col items-center py-8">
+                  <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+                  <p className="text-sm text-gray-600">{exportProgress || 'Exporting...'}</p>
+                </div>
+              ) : (
                 <button
-                  onClick={() => handleExport('camera-roll')}
-                  className="p-6 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all"
+                  onClick={handleExport}
+                  className="w-full p-6 rounded-lg border-2 border-blue-500 bg-blue-50 hover:bg-blue-100 transition-all flex flex-col items-center"
                 >
-                  <Download className="w-8 h-8 mx-auto mb-2 text-blue-600" />
-                  <div className="text-sm font-medium">Save to Camera Roll</div>
+                  <Download className="w-8 h-8 mb-2 text-blue-600" />
+                  <div className="text-sm font-medium text-blue-700">Download {exportFormat === 'frames' ? `${project.data?.frames?.length || 1} files` : 'file'}</div>
                 </button>
-
-                <button
-                  onClick={() => handleExport('share')}
-                  className="p-6 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all"
-                >
-                  <Download className="w-8 h-8 mx-auto mb-2 text-blue-600" />
-                  <div className="text-sm font-medium">Share to Apps</div>
-                </button>
-              </div>
+              )}
             </div>
           )}
         </div>

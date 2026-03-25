@@ -80,10 +80,17 @@ export default function Editor() {
     enabled: !!projectId,
   });
 
-  // Update ref when project changes
+  // Update ref when project changes + seed undo history on first load
+  const initialHistoryPushedRef = useRef(false);
   useEffect(() => {
     if (project?.data) {
       projectDataRef.current = project.data;
+      // Seed undo history with the initial state so first undo has somewhere to go
+      if (!initialHistoryPushedRef.current) {
+        initialHistoryPushedRef.current = true;
+        historyRef.current = [JSON.stringify(project.data)];
+        historyIndexRef.current = 0;
+      }
     }
   }, [project]);
 

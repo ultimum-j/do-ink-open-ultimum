@@ -84,15 +84,15 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
     const frames = project?.data?.frames || [];
     const ghostIndices = [];
 
-    // Previous ghost frames (shown with blue-ish tint)
+    // Previous ghost frames
     for (let i = 1; i <= ghostFramesBefore; i++) {
       const idx = currentFrame - i;
-      if (idx >= 0) ghostIndices.push({ frameIdx: idx, opacity: 0.15 / i, color: 'rgba(100, 140, 255, OPACITY)' });
+      if (idx >= 0) ghostIndices.push({ frameIdx: idx, opacity: 0.3 / i });
     }
-    // Next ghost frames (shown with green-ish tint)
+    // Next ghost frames
     for (let i = 1; i <= ghostFramesAfter; i++) {
       const idx = currentFrame + i;
-      if (idx < frames.length) ghostIndices.push({ frameIdx: idx, opacity: 0.15 / i, color: 'rgba(100, 220, 140, OPACITY)' });
+      if (idx < frames.length) ghostIndices.push({ frameIdx: idx, opacity: 0.3 / i });
     }
 
     ghostIndices.forEach(({ frameIdx, opacity }) => {
