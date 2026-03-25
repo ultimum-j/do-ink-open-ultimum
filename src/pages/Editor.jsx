@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { projectStorage } from '@/api/storage';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import TopToolbar from '../components/editor/TopToolbar';
@@ -61,12 +61,15 @@ export default function Editor() {
   const [zoom, setZoom] = useState(1);
   const projectDataRef = useRef(null);
 
+  // Undo/Redo history stack
+  const historyRef = useRef([]);
+  const historyIndexRef = useRef(-1);
+  const isUndoRedoRef = useRef(false);
+  const MAX_HISTORY = 50;
+
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
-    queryFn: async () => {
-      const projects = await base44.entities.Project.filter({ id: projectId });
-      return projects[0];
-    },
+    queryFn: () => projectStorage.get(projectId),
     enabled: !!projectId,
   });
 
@@ -78,7 +81,7 @@ export default function Editor() {
   }, [project]);
 
   const updateProjectMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Project.update(id, data),
+    mutationFn: ({ id, data }) => projectStorage.update(id, { data }),
     onSuccess: () => {
       queryClient.invalidateQueries(['project', projectId]);
     },
@@ -88,27 +91,86 @@ export default function Editor() {
   const saveProject = useCallback(async () => {
     if (project?.id && projectDataRef.current) {
       try {
-        await base44.entities.Project.update(project.id, projectDataRef.current);
+        await projectStorage.update(project.id, { data: projectDataRef.current });
       } catch (error) {
         console.error('Autosave failed:', error);
       }
     }
   }, [project?.id]);
 
-  // Autosave on page close
+  // Periodic autosave every 5 seconds
+  const lastSavedRef = useRef(null);
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (projectDataRef.current) {
-        // Save synchronously using navigator.sendBeacon or try to save
+    const interval = setInterval(() => {
+      if (projectDataRef.current && projectDataRef.current !== lastSavedRef.current) {
         saveProject();
-        e.preventDefault();
-        e.returnValue = '';
+        lastSavedRef.current = projectDataRef.current;
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [saveProject]);
+
+  // Also save on page close
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (projectDataRef.current) {
+        saveProject();
       }
     };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [saveProject]);
+
+  // Push state to undo history
+  const pushHistory = useCallback((data) => {
+    if (isUndoRedoRef.current) return;
+    const serialized = JSON.stringify(data);
+    // Avoid duplicate entries
+    if (historyRef.current.length > 0 && historyRef.current[historyIndexRef.current] === serialized) return;
+    // Truncate any future states if we're not at the end
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    historyRef.current.push(serialized);
+    if (historyRef.current.length > MAX_HISTORY) {
+      historyRef.current.shift();
+    }
+    historyIndexRef.current = historyRef.current.length - 1;
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return;
+    isUndoRedoRef.current = true;
+    historyIndexRef.current--;
+    const prevData = JSON.parse(historyRef.current[historyIndexRef.current]);
+    projectDataRef.current = prevData;
+    updateProjectMutation.mutate({ id: project?.id, data: prevData });
+    isUndoRedoRef.current = false;
+  }, [project?.id, updateProjectMutation]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    isUndoRedoRef.current = true;
+    historyIndexRef.current++;
+    const nextData = JSON.parse(historyRef.current[historyIndexRef.current]);
+    projectDataRef.current = nextData;
+    updateProjectMutation.mutate({ id: project?.id, data: nextData });
+    isUndoRedoRef.current = false;
+  }, [project?.id, updateProjectMutation]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (isMeta && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (isMeta && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const handleBack = async () => {
     // Auto-save before exiting with latest data
@@ -129,6 +191,7 @@ export default function Editor() {
     frames[currentFrame] = { elements: newElements };
     const newData = { ...project.data, frames };
     projectDataRef.current = newData;
+    pushHistory(newData);
     updateProjectMutation.mutate({ id: project.id, data: newData });
   };
 
@@ -425,6 +488,10 @@ export default function Editor() {
          isPlaying={isPlaying}
          onResetZoom={() => setZoom(1)}
          zoom={zoom}
+         onUndo={handleUndo}
+         onRedo={handleRedo}
+         canUndo={historyIndexRef.current > 0}
+         canRedo={historyIndexRef.current < historyRef.current.length - 1}
        />
 
       <div className="flex-1 flex relative">

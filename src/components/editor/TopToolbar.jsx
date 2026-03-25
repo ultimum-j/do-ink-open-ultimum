@@ -1,8 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Maximize2, Image, Menu, Play, Pause, Settings, Info, HelpCircle } from 'lucide-react';
+import { ChevronLeft, Maximize2, Image, Menu, Play, Pause, Settings, Info, HelpCircle, Undo2, Redo2 } from 'lucide-react';
 
-export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onResetZoom, zoom }) {
+export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onResetZoom, zoom, onUndo, onRedo, canUndo, canRedo }) {
   return (
     <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center justify-between">
       {/* Left Section */}
@@ -35,6 +35,26 @@ export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onR
 
       {/* Center Section */}
       <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`hover:bg-blue-50 ${canUndo ? 'text-blue-600' : 'text-gray-300'}`}
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`hover:bg-blue-50 ${canRedo ? 'text-blue-600' : 'text-gray-300'}`}
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <Redo2 className="w-5 h-5" />
+        </Button>
         <Button variant="ghost" size="icon" className="text-blue-600 hover:bg-blue-50">
           <Menu className="w-5 h-5" />
         </Button>

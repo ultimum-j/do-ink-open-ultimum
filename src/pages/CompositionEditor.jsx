@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { projectStorage } from '@/api/storage';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import CompositionToolbar from '../components/composition/CompositionToolbar';
@@ -21,20 +21,17 @@ export default function CompositionEditor() {
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
-    queryFn: async () => {
-      const projects = await base44.entities.Project.filter({ id: projectId });
-      return projects[0];
-    },
+    queryFn: () => projectStorage.get(projectId),
     enabled: !!projectId,
   });
 
   const { data: galleryProjects = [] } = useQuery({
     queryKey: ['gallery-projects'],
-    queryFn: () => base44.entities.Project.list('-updated_date'),
+    queryFn: () => projectStorage.list(),
   });
 
   const updateProjectMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Project.update(id, data),
+    mutationFn: ({ id, data }) => projectStorage.update(id, { data }),
     onSuccess: () => {
       queryClient.invalidateQueries(['project', projectId]);
     },

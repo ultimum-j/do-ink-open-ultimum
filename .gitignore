@@ -1,3 +1,7 @@
+# Private docs (call transcripts, screenshots, roadmap-and-planning)
+# MUST remain ignored — contains private Ultimum planning materials
+docs/
+
 #env
 .env
 .env.*

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import { projectStorage } from '@/api/storage';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { HelpCircle, Plus } from 'lucide-react';
@@ -17,11 +17,11 @@ export default function Gallery() {
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => base44.entities.Project.list('-updated_date'),
+    queryFn: () => projectStorage.list(),
   });
 
   const createProjectMutation = useMutation({
-    mutationFn: (projectData) => base44.entities.Project.create(projectData),
+    mutationFn: (projectData) => projectStorage.create(projectData),
     onSuccess: (newProject) => {
       queryClient.invalidateQueries(['projects']);
       const editorPath = newProject.type === 'composition' ? 'CompositionEditor' : 'Editor';
@@ -30,19 +30,20 @@ export default function Gallery() {
   });
 
   const deleteProjectMutation = useMutation({
-    mutationFn: (projectId) => base44.entities.Project.delete(projectId),
+    mutationFn: (projectId) => projectStorage.delete(projectId),
     onSuccess: () => {
       queryClient.invalidateQueries(['projects']);
     },
   });
 
   const duplicateProjectMutation = useMutation({
-    mutationFn: (project) => base44.entities.Project.create({
-      ...project,
+    mutationFn: (project) => projectStorage.create({
       name: `${project.name} (Copy)`,
-      id: undefined,
-      created_date: undefined,
-      updated_date: undefined,
+      type: project.type,
+      tags: project.tags || [],
+      frame_count: project.frame_count,
+      fps: project.fps,
+      data: JSON.parse(JSON.stringify(project.data)),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries(['projects']);
