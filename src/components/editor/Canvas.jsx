@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import PaintBucketPanel from './PaintBucketPanel';
 
-export default function Canvas({ project, currentFrame, selectedTool, selectedColor, toolProperties, onUpdate, selectedElements: externalSelectedElements, onSelectedElementsChange, zoom = 1, onZoomChange, ghostFramesBefore = 0, ghostFramesAfter = 0 }) {
+export default function Canvas({ project, currentFrame, selectedTool, selectedColor, toolProperties, onUpdate, selectedElements: externalSelectedElements, onSelectedElementsChange, zoom = 1, onZoomChange, ghostFramesBefore = 0, ghostFramesAfter = 0, frameLayers, activeLayerId }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [elements, setElements] = useState([]);
@@ -30,15 +30,22 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
   const width = 4000;
   const height = 4000;
 
-  // Only load elements from project on initial mount or frame change, not on every project update
+  // Load elements from the active layer (or flat elements for backward compat)
   const loadedFrameRef = useRef(null);
   useEffect(() => {
-    const frameKey = `${project?.id}-${currentFrame}`;
-    if (project?.data?.frames?.[currentFrame]?.elements && loadedFrameRef.current !== frameKey) {
+    const frameKey = `${project?.id}-${currentFrame}-${activeLayerId}`;
+    if (loadedFrameRef.current !== frameKey) {
       loadedFrameRef.current = frameKey;
-      setElements(project.data.frames[currentFrame].elements);
+      if (frameLayers && activeLayerId) {
+        const activeLayer = frameLayers.find(l => l.id === activeLayerId);
+        setElements(activeLayer?.elements || []);
+      } else if (project?.data?.frames?.[currentFrame]?.elements) {
+        setElements(project.data.frames[currentFrame].elements);
+      } else {
+        setElements([]);
+      }
     }
-  }, [project?.id, currentFrame]);
+  }, [project?.id, currentFrame, activeLayerId, frameLayers]);
 
   // Calculate bounding box for selected elements
   const calculateBoundingBox = (indices) => {
@@ -136,6 +143,50 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
       ctx.restore();
     });
     // --- End Onion Skinning ---
+
+    // --- Draw non-active visible layers (below and above active) ---
+    if (frameLayers && frameLayers.length > 1) {
+      frameLayers.forEach((layer) => {
+        if (layer.id === activeLayerId || !layer.visible) return;
+        ctx.save();
+        ctx.globalAlpha = layer.opacity;
+        (layer.elements || []).forEach((element) => {
+          if (element.type === 'path' && element.segments) {
+            ctx.strokeStyle = element.color || '#000';
+            ctx.lineWidth = element.width || 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+            ctx.beginPath();
+            element.segments.forEach((seg, si) => {
+              if (si === 0) ctx.moveTo(seg.start.x, seg.start.y);
+              if (seg.type === 'line') ctx.lineTo(seg.end.x, seg.end.y);
+              else if (seg.type === 'curve') {
+                ctx.bezierCurveTo(seg.control1.x, seg.control1.y, seg.control2.x, seg.control2.y, seg.end.x, seg.end.y);
+              }
+            });
+            if (element.closed) ctx.closePath();
+            if (element.filled) ctx.fill();
+            ctx.stroke();
+          } else if (element.type === 'shape') {
+            ctx.strokeStyle = element.strokeColor || element.color || '#000';
+            ctx.lineWidth = element.strokeWidth || 3;
+            if (element.filled) ctx.fillStyle = element.fillColor || element.color;
+            ctx.beginPath();
+            switch (element.shape) {
+              case 'circle': ctx.arc(element.x, element.y, element.radius, 0, Math.PI * 2); break;
+              case 'rectangle': ctx.rect(element.x, element.y, element.width, element.height); break;
+              case 'ellipse': ctx.ellipse(element.x + element.width / 2, element.y + element.height / 2, element.width / 2, element.height / 2, 0, 0, Math.PI * 2); break;
+              default: break;
+            }
+            if (element.filled) ctx.fill();
+            ctx.stroke();
+          }
+        });
+        ctx.restore();
+      });
+    }
+    // --- End non-active layers ---
 
     // Draw live pencil preview — smooth Catmull-Rom curve
     if (pencilPoints.length > 1) {
@@ -345,7 +396,7 @@ export default function Canvas({ project, currentFrame, selectedTool, selectedCo
       );
       ctx.setLineDash([]);
     }
-  }, [elements, selectedElement, selectedElements, selectedTool, selectionBox, width, height, pencilPoints, nearStartPoint, selectedColor, ghostFramesBefore, ghostFramesAfter, currentFrame, project?.data?.frames]);
+  }, [elements, selectedElement, selectedElements, selectedTool, selectionBox, width, height, pencilPoints, nearStartPoint, selectedColor, ghostFramesBefore, ghostFramesAfter, currentFrame, project?.data?.frames, frameLayers, activeLayerId]);
 
   // Helper functions for geometric shapes
   const drawStar = (ctx, cx, cy, points, outerRadius, innerRadius) => {

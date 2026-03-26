@@ -15,7 +15,21 @@ import FillPropertiesPanel from '../components/editor/FillPropertiesPanel';
 import StrokePropertiesPanel from '../components/editor/StrokePropertiesPanel';
 import ColorPropertiesPanel from '../components/editor/ColorPropertiesPanel';
 import SettingsPanel from '../components/editor/SettingsPanel';
+import LayersPanel from '../components/editor/LayersPanel';
 import { playClick, playUndo } from '@/hooks/use-ui-sound';
+
+/** Create a default layer wrapping elements for backward compat */
+function createDefaultLayer(elements = []) {
+  return { id: `layer-${Date.now()}`, name: 'Layer 1', visible: true, locked: false, opacity: 1, elements };
+}
+
+/** Ensure a frame has the layers format (migrate from flat elements if needed) */
+function ensureLayeredFrame(frame) {
+  if (!frame) return { layers: [createDefaultLayer()] };
+  if (frame.layers && frame.layers.length > 0) return frame;
+  // Migrate: wrap flat elements into a single default layer
+  return { layers: [createDefaultLayer(frame.elements || [])] };
+}
 
 export default function Editor() {
   const navigate = useNavigate();
@@ -61,6 +75,8 @@ export default function Editor() {
   });
   const [showSelectionPanel, setShowSelectionPanel] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showLayersPanel, setShowLayersPanel] = useState(false);
+  const [activeLayerId, setActiveLayerId] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [ghostFramesBefore, setGhostFramesBefore] = useState(2);
   const [ghostFramesAfter, setGhostFramesAfter] = useState(0);
@@ -213,17 +229,118 @@ export default function Editor() {
     return () => clearInterval(interval);
   }, [isPlaying, fps, project?.data?.frames?.length]);
 
+  // --- Layer-aware helpers ---
+  const getFrameLayers = () => {
+    const frame = project?.data?.frames?.[currentFrame];
+    return ensureLayeredFrame(frame).layers;
+  };
+
+  // Auto-set activeLayerId when frame changes or on first load
+  useEffect(() => {
+    const layers = getFrameLayers();
+    if (layers.length > 0 && (!activeLayerId || !layers.find(l => l.id === activeLayerId))) {
+      setActiveLayerId(layers[layers.length - 1].id); // default to top layer
+    }
+  }, [currentFrame, project?.data?.frames]);
+
   const getElements = () => {
-    return project?.data?.frames?.[currentFrame]?.elements || [];
+    const layers = getFrameLayers();
+    const active = layers.find(l => l.id === activeLayerId);
+    return active?.elements || [];
   };
 
   const updateElements = (newElements) => {
     const frames = [...(project.data?.frames || [])];
-    frames[currentFrame] = { elements: newElements };
+    const frame = ensureLayeredFrame(frames[currentFrame]);
+    const newLayers = frame.layers.map(l =>
+      l.id === activeLayerId ? { ...l, elements: newElements } : l
+    );
+    frames[currentFrame] = { layers: newLayers };
     const newData = { ...project.data, frames };
     projectDataRef.current = newData;
     pushHistory(newData);
     updateProjectMutation.mutate({ id: project.id, data: newData });
+  };
+
+  const updateFrameLayers = (newLayers) => {
+    const frames = [...(project.data?.frames || [])];
+    frames[currentFrame] = { layers: newLayers };
+    const newData = { ...project.data, frames };
+    projectDataRef.current = newData;
+    pushHistory(newData);
+    updateProjectMutation.mutate({ id: project.id, data: newData });
+  };
+
+  // Layer CRUD operations
+  const handleAddLayer = () => {
+    const layers = getFrameLayers();
+    const newLayer = {
+      id: `layer-${Date.now()}`,
+      name: `Layer ${layers.length + 1}`,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      elements: [],
+    };
+    updateFrameLayers([...layers, newLayer]);
+    setActiveLayerId(newLayer.id);
+  };
+
+  const handleDeleteLayer = (layerId) => {
+    const layers = getFrameLayers();
+    if (layers.length <= 1) return;
+    const newLayers = layers.filter(l => l.id !== layerId);
+    updateFrameLayers(newLayers);
+    if (activeLayerId === layerId) {
+      setActiveLayerId(newLayers[newLayers.length - 1].id);
+    }
+  };
+
+  const handleDuplicateLayer = (layerId) => {
+    const layers = getFrameLayers();
+    const source = layers.find(l => l.id === layerId);
+    if (!source) return;
+    const dup = {
+      ...JSON.parse(JSON.stringify(source)),
+      id: `layer-${Date.now()}`,
+      name: `${source.name} (Copy)`,
+    };
+    const idx = layers.findIndex(l => l.id === layerId);
+    const newLayers = [...layers];
+    newLayers.splice(idx + 1, 0, dup);
+    updateFrameLayers(newLayers);
+    setActiveLayerId(dup.id);
+  };
+
+  const handleToggleLayerVisibility = (layerId) => {
+    const layers = getFrameLayers();
+    updateFrameLayers(layers.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l));
+  };
+
+  const handleToggleLayerLock = (layerId) => {
+    const layers = getFrameLayers();
+    updateFrameLayers(layers.map(l => l.id === layerId ? { ...l, locked: !l.locked } : l));
+  };
+
+  const handleReorderLayer = (layerId, direction) => {
+    const layers = [...getFrameLayers()];
+    const idx = layers.findIndex(l => l.id === layerId);
+    if (direction === 'up' && idx < layers.length - 1) {
+      [layers[idx], layers[idx + 1]] = [layers[idx + 1], layers[idx]];
+    } else if (direction === 'down' && idx > 0) {
+      [layers[idx], layers[idx - 1]] = [layers[idx - 1], layers[idx]];
+    }
+    updateFrameLayers(layers);
+  };
+
+  const handleLayerOpacityChange = (layerId, opacity) => {
+    const layers = getFrameLayers();
+    updateFrameLayers(layers.map(l => l.id === layerId ? { ...l, opacity } : l));
+  };
+
+  const handleRenameLayer = (layerId, name) => {
+    const layers = getFrameLayers();
+    updateFrameLayers(layers.map(l => l.id === layerId ? { ...l, name } : l));
   };
 
   const handleCut = () => {
@@ -524,6 +641,7 @@ export default function Editor() {
          canUndo={historyIndexRef.current > 0}
          canRedo={historyIndexRef.current < historyRef.current.length - 1}
          onSettingsClick={() => setShowSettingsPanel(!showSettingsPanel)}
+         onLayersClick={() => setShowLayersPanel(!showLayersPanel)}
          fps={fps}
        />
 
@@ -549,7 +667,27 @@ export default function Editor() {
              onZoomChange={setZoom}
              ghostFramesBefore={ghostFramesBefore}
              ghostFramesAfter={ghostFramesAfter}
+             frameLayers={getFrameLayers()}
+             activeLayerId={activeLayerId}
            />
+
+          {/* Layers Panel */}
+          {showLayersPanel && (
+            <LayersPanel
+              layers={getFrameLayers()}
+              activeLayerId={activeLayerId}
+              onActiveLayerChange={setActiveLayerId}
+              onAddLayer={handleAddLayer}
+              onDeleteLayer={handleDeleteLayer}
+              onDuplicateLayer={handleDuplicateLayer}
+              onToggleVisibility={handleToggleLayerVisibility}
+              onToggleLock={handleToggleLayerLock}
+              onReorderLayer={handleReorderLayer}
+              onOpacityChange={handleLayerOpacityChange}
+              onRenameLayer={handleRenameLayer}
+              onClose={() => setShowLayersPanel(false)}
+            />
+          )}
 
           {/* Settings Panel */}
           {showSettingsPanel && (

@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Maximize2, Image, Menu, Play, Pause, Settings, Info, HelpCircle, Undo2, Redo2 } from 'lucide-react';
 
-export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onResetZoom, zoom, onUndo, onRedo, canUndo, canRedo, onSettingsClick, fps }) {
+export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onResetZoom, zoom, onUndo, onRedo, canUndo, canRedo, onSettingsClick, onLayersClick, fps }) {
   return (
     <div className="bg-white border-b border-gray-300 px-4 py-3 flex items-center justify-between">
       {/* Left Section */}
@@ -55,7 +55,13 @@ export default function TopToolbar({ projectName, onBack, onPlay, isPlaying, onR
         >
           <Redo2 className="w-5 h-5" />
         </Button>
-        <Button variant="ghost" size="icon" className="text-blue-600 hover:bg-blue-50">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-blue-600 hover:bg-blue-50"
+          onClick={onLayersClick}
+          title="Layers"
+        >
           <Menu className="w-5 h-5" />
         </Button>
         <Button
