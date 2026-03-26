@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Copy, Trash2, Scissors, ClipboardPaste } from 'lucide-react';
+import { playPop, playClick, playUndo } from '@/hooks/use-ui-sound';
 
 export default function Timeline({ project, currentFrame, onFrameChange, onUpdate }) {
   const frameCount = project?.data?.frames?.length || 1;
@@ -11,6 +12,7 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
     frames.splice(currentFrame + 1, 0, { elements: [] });
     onUpdate({ ...project.data, frames });
     onFrameChange(currentFrame + 1);
+    playPop();
   };
 
   const handleDuplicateFrame = () => {
@@ -19,6 +21,7 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
     frames.splice(currentFrame + 1, 0, currentFrameData);
     onUpdate({ ...project.data, frames });
     onFrameChange(currentFrame + 1);
+    playPop();
   };
 
   const handleDeleteFrame = () => {
@@ -29,11 +32,13 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
     if (currentFrame >= frames.length) {
       onFrameChange(frames.length - 1);
     }
+    playUndo();
   };
 
   const handleCopyFrame = () => {
     const frames = project.data?.frames || [{ elements: [] }];
     setCopiedFrame(JSON.parse(JSON.stringify(frames[currentFrame] || { elements: [] })));
+    playClick();
   };
 
   const handlePasteFrame = () => {
@@ -42,6 +47,7 @@ export default function Timeline({ project, currentFrame, onFrameChange, onUpdat
     frames.splice(currentFrame + 1, 0, JSON.parse(JSON.stringify(copiedFrame)));
     onUpdate({ ...project.data, frames });
     onFrameChange(currentFrame + 1);
+    playPop();
   };
 
   return (

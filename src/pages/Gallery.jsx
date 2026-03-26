@@ -104,21 +104,21 @@ export default function Gallery() {
             <Button
               variant={filterType === 'all' ? 'default' : 'outline'}
               onClick={() => setFilterType('all')}
-              className="rounded-full"
+              className="rounded-full font-display font-semibold"
             >
               All Clips
             </Button>
             <Button
               variant={filterType === 'drawing' ? 'default' : 'outline'}
               onClick={() => setFilterType('drawing')}
-              className="rounded-full"
+              className="rounded-full font-display font-semibold"
             >
               Drawings
             </Button>
             <Button
               variant={filterType === 'composition' ? 'default' : 'outline'}
               onClick={() => setFilterType('composition')}
-              className="rounded-full"
+              className="rounded-full font-display font-semibold"
             >
               Comps
             </Button>

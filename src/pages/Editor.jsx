@@ -15,6 +15,7 @@ import FillPropertiesPanel from '../components/editor/FillPropertiesPanel';
 import StrokePropertiesPanel from '../components/editor/StrokePropertiesPanel';
 import ColorPropertiesPanel from '../components/editor/ColorPropertiesPanel';
 import SettingsPanel from '../components/editor/SettingsPanel';
+import { playClick, playUndo } from '@/hooks/use-ui-sound';
 
 export default function Editor() {
   const navigate = useNavigate();
@@ -158,6 +159,7 @@ export default function Editor() {
     projectDataRef.current = prevData;
     updateProjectMutation.mutate({ id: project?.id, data: prevData });
     isUndoRedoRef.current = false;
+    playUndo();
   }, [project?.id, updateProjectMutation]);
 
   const handleRedo = useCallback(() => {
@@ -168,6 +170,7 @@ export default function Editor() {
     projectDataRef.current = nextData;
     updateProjectMutation.mutate({ id: project?.id, data: nextData });
     isUndoRedoRef.current = false;
+    playClick();
   }, [project?.id, updateProjectMutation]);
 
   // Keyboard shortcuts for undo/redo
@@ -642,6 +645,7 @@ export default function Editor() {
          selectedTool={selectedTool}
          onToolSelect={(tool) => {
            setSelectedTool(tool);
+           playClick();
            setShowColorPanel(false);
            if (['select', 'multiselect'].includes(tool)) {
              setShowSelectionPanel(true);

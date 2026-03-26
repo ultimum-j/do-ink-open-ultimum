@@ -108,7 +108,7 @@ export default function ProjectCard({ project, onDelete, onDuplicate, onExport }
             project.type === 'composition' ? 'bg-[#6B46C1]' : 'bg-[#5a6b3d]'
           }`}
         >
-          <span className="text-white text-sm font-medium truncate">
+          <span className="text-white text-sm font-semibold truncate font-display">
             {project.name}
           </span>
           
